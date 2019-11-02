@@ -5,6 +5,7 @@ import (
 	"os/exec"
 	"bufio"
 	"log"
+	"math/rand"
 )
 
 var maze []string
@@ -14,7 +15,16 @@ type Player struct {
 	col int
 }
 
+type Ghost struct {
+	row int
+	col int
+}
+
 var player Player
+var ghosts []*Ghost
+var score int
+var numDots int
+var lives = 1
 
 func loadMaze() error {
 	file, err := os.Open("maze01.txt");	
@@ -35,6 +45,10 @@ func loadMaze() error {
 			switch char {
 			case 'P': 
 				player = Player{row, col}
+			case 'G':
+				ghosts = append(ghosts, &Ghost{row, col})
+			case '.':
+				numDots++
 			}
 		}
 	}
@@ -47,6 +61,8 @@ func printScreen() {
 		for _, chr := range line {
 			switch chr {
 			case '#':
+				fallthrough
+			case '.':
 				fmt.Printf("%c", chr)
 			default:
 				fmt.Printf(" ")
@@ -59,6 +75,14 @@ func printScreen() {
 
 	moveCursor(player.row, player.col)
 	fmt.Printf("P")
+
+	for _, ghost := range ghosts {
+		moveCursor(ghost.row, ghost.col);
+		fmt.Printf("G")
+	}
+
+	moveCursor(len(maze) + 1, 0)
+	fmt.Printf("Score: %v, Lives: %v", score, lives)
 }
 
 func init() {
@@ -118,6 +142,17 @@ func moveCursor(row, col int) {
 	fmt.Printf("\x1b[%d;%df", row + 1, col + 1)
 }
 
+func drawDirection() string {
+	dir := rand.Intn(4)
+	dirMap := map[int]string{
+		0: "UP",
+		1: "DOWN",
+		2: "RIGHT",
+		3: "LEFT",
+	}
+	return dirMap[dir]
+}
+
 func makeMove(oldRow, oldCol int, dir string) (newRow, newCol int) {
 	newRow, newCol = oldRow, oldCol
 
@@ -154,6 +189,19 @@ func makeMove(oldRow, oldCol int, dir string) (newRow, newCol int) {
 
 func movePlayer(dir string) {
 	player.row, player.col = makeMove(player.row, player.col, dir)
+	switch maze[player.row][player.col] {
+	case '.':
+		numDots--
+		score++
+		maze[player.row] = maze[player.row][0:player.col] + " " + maze[player.row][player.col + 1:]
+	}
+}
+
+func moveGhosts() {
+	for _, ghost := range ghosts {
+		dir := drawDirection()
+		ghost.row, ghost.col = makeMove(ghost.row, ghost.col, dir)
+	}
 }
 
 func main() {
@@ -173,8 +221,15 @@ func main() {
 		}
 
 		movePlayer(input)
+		moveGhosts()
 
-		if input == "ESC" {
+		for _, ghost := range ghosts {
+			if ghost.row == player.row && ghost.col == player.col {
+				lives = 0
+			}
+		}
+
+		if input == "ESC" || lives == 0 || numDots == 0 {
 			break
 		}
 	}
