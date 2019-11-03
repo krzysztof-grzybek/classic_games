@@ -8,8 +8,12 @@ import (
 	"math/rand"
 	"time"
 	"encoding/json"
+	"flag"
 )
-
+var (
+    configFile = flag.String("config-file", "config.json", "path to custom configuration file")
+    mazeFile   = flag.String("maze-file", "maze01.txt", "path to a custom maze file")
+)
 var maze []string
 
 type Player struct {
@@ -41,7 +45,7 @@ var numDots int
 var lives = 1
 
 func loadConfig() error {
-	f, err := os.Open("config.json")
+	f, err := os.Open(*configFile)
 	if err != nil {
 		return err
 	}
@@ -58,7 +62,7 @@ func loadConfig() error {
 }
 
 func loadMaze() error {
-	file, err := os.Open("maze01.txt");	
+	file, err := os.Open(*mazeFile);	
 	if err != nil {
 		return err
 	}
@@ -116,7 +120,7 @@ func printScreen() {
 	fmt.Printf("Score: %v, Lives: %v", score, lives)
 }
 
-func init() {
+func initialize() {
 	cbTerm := exec.Command("stty", "cbreak", "-echo")
 	cbTerm.Stdin = os.Stdin
 
@@ -240,6 +244,9 @@ func moveGhosts() {
 }
 
 func main() {
+	flag.Parse()
+
+	initialize()
 	defer cleanup()
 
 	err := loadMaze()
