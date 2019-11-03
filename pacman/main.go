@@ -7,6 +7,7 @@ import (
 	"log"
 	"math/rand"
 	"time"
+	"encoding/json"
 )
 
 var maze []string
@@ -21,11 +22,40 @@ type Ghost struct {
 	col int
 }
 
+type Config struct {
+    Player   string `json:"player"`
+    Ghost    string `json:"ghost"`
+    Wall     string `json:"wall"`
+    Dot      string `json:"dot"`
+    Pill     string `json:"pill"`
+    Death    string `json:"death"`
+    Space    string `json:"space"`
+    UseEmoji bool   `json:"use_emoji"`
+}
+
+var cfg Config
 var player Player
 var ghosts []*Ghost
 var score int
 var numDots int
 var lives = 1
+
+func loadConfig() error {
+	f, err := os.Open("config.json")
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+
+	decoder := json.NewDecoder(f)
+	decodingErr := decoder.Decode(&cfg)
+
+	if decodingErr != nil { 
+		return decodingErr
+	}
+
+	return nil
+}
 
 func loadMaze() error {
 	file, err := os.Open("maze01.txt");	
@@ -62,11 +92,11 @@ func printScreen() {
 		for _, chr := range line {
 			switch chr {
 			case '#':
-				fallthrough
+				fmt.Printf(cfg.Wall)
 			case '.':
-				fmt.Printf("%c", chr)
+				fmt.Printf(cfg.Dot)
 			default:
-				fmt.Printf(" ")
+				fmt.Printf(cfg.Space)
 			}
 
 		}
@@ -75,11 +105,11 @@ func printScreen() {
 	}
 
 	moveCursor(player.row, player.col)
-	fmt.Printf("P")
+	fmt.Printf(cfg.Player)
 
 	for _, ghost := range ghosts {
 		moveCursor(ghost.row, ghost.col);
-		fmt.Printf("G")
+		fmt.Printf(cfg.Ghost)
 	}
 
 	moveCursor(len(maze) + 1, 0)
@@ -140,7 +170,11 @@ func clearScreen() {
 }
 
 func moveCursor(row, col int) {
-	fmt.Printf("\x1b[%d;%df", row, col + 1)
+	if cfg.UseEmoji {
+		fmt.Printf("\x1b[%d;%df", row, col * 2 + 1)
+	} else {
+		fmt.Printf("\x1b[%d;%df", row, col + 1)
+	}
 }
 
 func drawDirection() string {
@@ -213,6 +247,11 @@ func main() {
 		fmt.Printf("Error loading maze: %v\n", err)
 	}
 
+	cfgErr := loadConfig()
+	if cfgErr != nil {
+		fmt.Printf("Error loading configuration: %v\n", err)
+	}
+
 	inputCh := make(chan string)
 
 	go func(ch chan<- string) {
@@ -224,7 +263,7 @@ func main() {
 			ch <-input
 		}
 	}(inputCh)
-	
+
 	for {
 		printScreen()
 
@@ -249,6 +288,11 @@ func main() {
 		}
 
 		if lives == 0 || numDots == 0 {
+			if lives == 0 {
+				moveCursor(player.row, player.col)
+				fmt.Printf(cfg.Death)
+				moveCursor(len(maze)+2, 0)
+			}
 			break
 		}
 
