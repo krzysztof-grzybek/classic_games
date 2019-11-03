@@ -6,6 +6,7 @@ import (
 	"bufio"
 	"log"
 	"math/rand"
+	"time"
 )
 
 var maze []string
@@ -139,7 +140,7 @@ func clearScreen() {
 }
 
 func moveCursor(row, col int) {
-	fmt.Printf("\x1b[%d;%df", row + 1, col + 1)
+	fmt.Printf("\x1b[%d;%df", row, col + 1)
 }
 
 func drawDirection() string {
@@ -211,16 +212,34 @@ func main() {
     if err != nil {
 		fmt.Printf("Error loading maze: %v\n", err)
 	}
+
+	inputCh := make(chan string)
+
+	go func(ch chan<- string) {
+		for {
+			input, err := readinput()
+			if err != nil {
+				ch <- "ESC"
+			}
+			ch <-input
+		}
+	}(inputCh)
+	
 	for {
 		printScreen()
 
-		input, err := readinput()
-		if err != nil {
-			log.Fatalf("Error reading input: %v\n", err)
-			break
+
+
+
+		select {
+		case inp := <-inputCh:
+			if inp == "ESC" {
+				lives = 0
+			}
+			movePlayer(inp)
+		default:
 		}
 
-		movePlayer(input)
 		moveGhosts()
 
 		for _, ghost := range ghosts {
@@ -229,8 +248,10 @@ func main() {
 			}
 		}
 
-		if input == "ESC" || lives == 0 || numDots == 0 {
+		if lives == 0 || numDots == 0 {
 			break
 		}
+
+		time.Sleep(200 * time.Millisecond)
 	}
 }
