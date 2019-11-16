@@ -5,6 +5,7 @@ import (
 	"log"
 	"time"
 	"math"
+	"math/rand"
 
 	"github.com/hajimehoshi/ebiten"
 )
@@ -38,6 +39,9 @@ type Snake struct {
 
 var snake = newSnake()
 var lastFrameTime time.Time
+
+type Target = Position
+var target = newTarget()
 
 
 func newSnake() Snake {
@@ -110,7 +114,7 @@ func setDirection() {
 	direction = lastPressedKey
 }
 
-func (snake *Snake) move(direction Direction) {
+func (snake *Snake) move(direction Direction, isEaten bool) {
 	if direction == LEFT {
 		snake.body = prepend(snake.body, Position{snake.body[0].x - 1, snake.body[0].y})
 	} else if direction == RIGHT {
@@ -121,7 +125,9 @@ func (snake *Snake) move(direction Direction) {
 		snake.body = prepend(snake.body, Position{snake.body[0].x, snake.body[0].y + 1})
 	}
 
-	snake.body = snake.body[:len(snake.body) - 1]
+	if !isEaten {
+		snake.body = snake.body[:len(snake.body) - 1]
+	}
 
 	if snake.body[0].x == -1 {
 		snake.body[0].x = config.size.width - 1
@@ -146,17 +152,38 @@ func (snake Snake) render(screen *ebiten.Image) {
 	}
 }
 
+func (snake Snake) contains(pos Position) bool {
+	for _, item := range snake.body {
+		if item.x == pos.x && item.y == pos.y {
+			return true
+		}
+	}
+
+	return false
+}
+
+func handleTargetEat() bool {
+	if target.x == snake.body[0].x && target.y == snake.body[0].y {
+		target = newTarget()
+		return true
+	}
+
+	return false
+}
+
 func update(screen *ebiten.Image) error {
 	handleKeyPress()
 
 	if lastFrameTime.IsZero() {
 		lastFrameTime = time.Now()
+		isEaten := handleTargetEat()
 		setDirection()
-		snake.move(direction)
+		snake.move(direction, isEaten)
 	} else if time.Now().Sub(lastFrameTime).Milliseconds() > int64(1000 / config.fps) {
 		lastFrameTime = time.Now()
+		isEaten := handleTargetEat()
 		setDirection()
-		snake.move(direction)
+		snake.move(direction, isEaten)
 	}
 
 	if ebiten.IsDrawingSkipped() {
@@ -164,8 +191,29 @@ func update(screen *ebiten.Image) error {
 	}
 
 	snake.render(screen)
+	target.render(screen)
 
 	return nil
+}
+
+func newTarget() Target {
+	randX := rand.Intn(config.size.width - 1)
+	randY := rand.Intn(config.size.height - 1)
+	pos := Position{randX, randY}
+
+	if snake.contains(pos) {
+		return newTarget()
+	}
+
+	return Position{randX, randY}
+}
+
+func (target Target) render(screen *ebiten.Image) {
+	image, _ := ebiten.NewImage(config.fieldSize, config.fieldSize, ebiten.FilterDefault)
+	image.Fill(color.RGBA{0, 0xff, 0, 0xff})
+	op := &ebiten.DrawImageOptions{}
+	op.GeoM.Translate(float64(target.x*config.fieldSize), float64(target.y*config.fieldSize))
+	screen.DrawImage(image, op)
 }
 
 func main() {
