@@ -1,14 +1,14 @@
 package main
 
 import (
-	"github.com/hajimehoshi/ebiten/ebitenutil"
 	"image/color"
 	"log"
-	"time"
 	"math"
 	"math/rand"
+	"time"
 
 	"github.com/hajimehoshi/ebiten"
+	"github.com/hajimehoshi/ebiten/ebitenutil"
 )
 
 type Size struct {
@@ -20,6 +20,7 @@ type Position struct {
 	x int
 	y int
 }
+
 type Config struct {
 	size      Size
 	fieldSize int
@@ -34,6 +35,7 @@ var config Config = Config{
 	fieldSize: 20,
 	fps: 6,
 }
+
 type Snake struct {
 	body []Position
 }
@@ -46,12 +48,18 @@ var lastFrameTime time.Time
 type Target = Position
 var target = newTarget()
 
-var isGameOver = false
+type GameState int
+const (
+	MENU GameState = iota
+	PLAY
+	GAME_OVER
+)
+var gameState = MENU
 
 func newSnake() Snake {
 	middleX := int(math.Ceil(float64(config.size.width) / 2))
 	middleY := int(math.Ceil(float64(config.size.height) / 2))
-	return Snake{[]Position{Position{middleX, middleY}, {middleX + 1, middleY},{middleX + 2, middleY}}}
+	return Snake{[]Position{Position{middleX, middleY}, {middleX - 1, middleY},{middleX - 2, middleY}}}
 }
 func prepend(x []Position, y Position) []Position {
 	x = append(x, Position{0, 0})
@@ -68,7 +76,9 @@ const (
 	DOWN
 )
 var direction = RIGHT
-var lastPressedKey = RIGHT
+var lastPressedArrowKey = RIGHT
+var isEnterPressed = false
+var isEscPressed = false
 var pressed = map[Direction]bool{
 	LEFT: false,
 	RIGHT: false,
@@ -76,10 +86,10 @@ var pressed = map[Direction]bool{
 	DOWN: false,
 }
 
-func handleKeyPress() {
+func handleArrowKeyPress() {
 	if ebiten.IsKeyPressed(ebiten.KeyLeft) {
 		if pressed[LEFT] == false && direction != RIGHT {
-			lastPressedKey = LEFT
+			lastPressedArrowKey = LEFT
 		}
 		pressed[LEFT] = true
 	} else {
@@ -88,7 +98,7 @@ func handleKeyPress() {
 
 	if ebiten.IsKeyPressed(ebiten.KeyRight)  {
 		if pressed[RIGHT] == false && direction != LEFT {
-			lastPressedKey = RIGHT
+			lastPressedArrowKey = RIGHT
 		}
 		pressed[RIGHT] = true
 	} else {
@@ -97,7 +107,7 @@ func handleKeyPress() {
 
 	if ebiten.IsKeyPressed(ebiten.KeyUp) {
 		if pressed[UP] == false && direction != DOWN {
-			lastPressedKey = UP
+			lastPressedArrowKey = UP
 		}
 		pressed[UP] = true
 	} else {
@@ -106,7 +116,7 @@ func handleKeyPress() {
 
 	if ebiten.IsKeyPressed(ebiten.KeyDown)  {
 		if pressed[DOWN] == false && direction != UP {
-			lastPressedKey = DOWN
+			lastPressedArrowKey = DOWN
 		}
 		pressed[DOWN] = true
 	} else {
@@ -114,11 +124,16 @@ func handleKeyPress() {
 	}
 }
 
-func setDirection() {
-	direction = lastPressedKey
+func handleActionKeysPress() {
+	isEnterPressed = ebiten.IsKeyPressed(ebiten.KeyEnter)
+	isEscPressed = ebiten.IsKeyPressed(ebiten.KeyEscape)
 }
 
-func (snake *Snake) move(direction Direction, isEaten bool) {
+func setDirection() {
+	direction = lastPressedArrowKey
+}
+
+func (snake *Snake) move(direction Direction) {
 	if direction == LEFT {
 		snake.body = prepend(snake.body, Position{snake.body[0].x - 1, snake.body[0].y})
 	} else if direction == RIGHT {
@@ -127,10 +142,6 @@ func (snake *Snake) move(direction Direction, isEaten bool) {
 		snake.body = prepend(snake.body, Position{snake.body[0].x, snake.body[0].y - 1})
 	} else if direction == DOWN {
 		snake.body = prepend(snake.body, Position{snake.body[0].x, snake.body[0].y + 1})
-	}
-
-	if !isEaten {
-		snake.body = snake.body[:len(snake.body) - 1]
 	}
 
 	if snake.body[0].x == -1 {
@@ -187,7 +198,7 @@ func handleTargetEat() bool {
 }
 
 func gameOver(screen *ebiten.Image) {
-	if isGameOver {
+	if gameState == GAME_OVER {
 		imgBounds := images["game_over"].Bounds()
 		scale := float64(config.size.width * config.fieldSize) / float64(imgBounds.Max.X)
 		translateY := (float64(config.size.height * config.fieldSize) - float64(imgBounds.Max.Y) * scale) / 2
@@ -198,34 +209,77 @@ func gameOver(screen *ebiten.Image) {
 	}
 }
 
-func update(screen *ebiten.Image) error {
-	screen.Fill(color.RGBA{0, 0, 0xff, 0xff})
+func menu(screen *ebiten.Image) {
+	if gameState == MENU {
+		imgBounds := images["game_over"].Bounds()
+		scale := float64(config.size.width * config.fieldSize) / float64(imgBounds.Max.X)
+		translateY := (float64(config.size.height * config.fieldSize) - float64(imgBounds.Max.Y) * scale) / 2
+		op := &ebiten.DrawImageOptions{}
+		op.GeoM.Scale(scale, scale)
+		op.GeoM.Translate(0, translateY)
+		screen.DrawImage(images["game_over"], op)
+	}
+}
 
-	if !isGameOver {
-		handleKeyPress()
+func restartGame() {
+	snake = newSnake()
+	target = newTarget()
+	lastFrameTime = time.Now()
+	direction = RIGHT
+	lastPressedArrowKey = RIGHT
+	gameState = PLAY
+}
+
+func quitGame() {
+	restartGame()
+	gameState = MENU
+}
+
+func update(screen *ebiten.Image) error {
+	handleActionKeysPress()
+	if gameState == PLAY {
+		handleArrowKeyPress()
 
 		if lastFrameTime.IsZero() {
 			lastFrameTime = time.Now()
-			isEaten := handleTargetEat()
-			setDirection()
-			snake.move(direction, isEaten)
 		} else if time.Now().Sub(lastFrameTime).Milliseconds() > int64(1000/config.fps) {
 			lastFrameTime = time.Now()
-			isEaten := handleTargetEat()
 			setDirection()
-			snake.move(direction, isEaten)
+			snake.move(direction)
+			isEaten := handleTargetEat()
+			if !isEaten {
+				snake.body = snake.body[:len(snake.body) - 1]
+			}
 			if snake.collides() {
-				isGameOver = true
+				gameState = GAME_OVER
 			}
 		}
+
+		if isEscPressed {
+			quitGame()
+		}
+	} else if gameState == GAME_OVER || gameState == MENU {
+		if isEnterPressed {
+			restartGame()
+			return nil
+		}
+		if isEnterPressed {
+			restartGame()
+			return nil
+		}
 	}
+
 	if ebiten.IsDrawingSkipped() {
 		return nil
 	}
 
-	target.render(screen)
-	snake.render(screen)
+	screen.Fill(color.RGBA{0, 0, 0xff, 0xff})
+	if gameState != MENU {
+		target.render(screen)
+		snake.render(screen)
+	}
 	gameOver(screen)
+	menu(screen)
 
 	return nil
 }
