@@ -1,6 +1,7 @@
 package main
 
 import (
+	"github.com/hajimehoshi/ebiten/ebitenutil"
 	"image/color"
 	"log"
 	"time"
@@ -27,15 +28,17 @@ type Config struct {
 
 var config Config = Config{
 	size: Size{
-		width:  40,
-		height: 50,
+		width:  20,
+		height: 30,
 	},
-	fieldSize: 10,
+	fieldSize: 20,
 	fps: 6,
 }
 type Snake struct {
 	body []Position
 }
+
+var images = map[string]*ebiten.Image{}
 
 var snake = newSnake()
 var lastFrameTime time.Time
@@ -43,6 +46,7 @@ var lastFrameTime time.Time
 type Target = Position
 var target = newTarget()
 
+var isGameOver = false
 
 func newSnake() Snake {
 	middleX := int(math.Ceil(float64(config.size.width) / 2))
@@ -162,6 +166,17 @@ func (snake Snake) contains(pos Position) bool {
 	return false
 }
 
+func (snake Snake) collides() bool {
+	head := snake.body[0]
+	for i, item := range snake.body {
+		if i != 0 && item.x == head.x && item.y == head.y {
+			return true
+		}
+	}
+
+	return false
+}
+
 func handleTargetEat() bool {
 	if target.x == snake.body[0].x && target.y == snake.body[0].y {
 		target = newTarget()
@@ -171,27 +186,46 @@ func handleTargetEat() bool {
 	return false
 }
 
-func update(screen *ebiten.Image) error {
-	handleKeyPress()
-
-	if lastFrameTime.IsZero() {
-		lastFrameTime = time.Now()
-		isEaten := handleTargetEat()
-		setDirection()
-		snake.move(direction, isEaten)
-	} else if time.Now().Sub(lastFrameTime).Milliseconds() > int64(1000 / config.fps) {
-		lastFrameTime = time.Now()
-		isEaten := handleTargetEat()
-		setDirection()
-		snake.move(direction, isEaten)
+func gameOver(screen *ebiten.Image) {
+	if isGameOver {
+		imgBounds := images["game_over"].Bounds()
+		scale := float64(config.size.width * config.fieldSize) / float64(imgBounds.Max.X)
+		translateY := (float64(config.size.height * config.fieldSize) - float64(imgBounds.Max.Y) * scale) / 2
+		op := &ebiten.DrawImageOptions{}
+		op.GeoM.Scale(scale, scale)
+		op.GeoM.Translate(0, translateY)
+		screen.DrawImage(images["game_over"], op)
 	}
+}
 
+func update(screen *ebiten.Image) error {
+	screen.Fill(color.RGBA{0, 0, 0xff, 0xff})
+
+	if !isGameOver {
+		handleKeyPress()
+
+		if lastFrameTime.IsZero() {
+			lastFrameTime = time.Now()
+			isEaten := handleTargetEat()
+			setDirection()
+			snake.move(direction, isEaten)
+		} else if time.Now().Sub(lastFrameTime).Milliseconds() > int64(1000/config.fps) {
+			lastFrameTime = time.Now()
+			isEaten := handleTargetEat()
+			setDirection()
+			snake.move(direction, isEaten)
+			if snake.collides() {
+				isGameOver = true
+			}
+		}
+	}
 	if ebiten.IsDrawingSkipped() {
 		return nil
 	}
 
-	snake.render(screen)
 	target.render(screen)
+	snake.render(screen)
+	gameOver(screen)
 
 	return nil
 }
@@ -214,6 +248,16 @@ func (target Target) render(screen *ebiten.Image) {
 	op := &ebiten.DrawImageOptions{}
 	op.GeoM.Translate(float64(target.x*config.fieldSize), float64(target.y*config.fieldSize))
 	screen.DrawImage(image, op)
+}
+
+func init() {
+	var err error
+	img, _, err := ebitenutil.NewImageFromFile("game_over.png", ebiten.FilterDefault)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	images["game_over"] = img
 }
 
 func main() {
